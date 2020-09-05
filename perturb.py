@@ -31,7 +31,6 @@ class AbstractConsistencyLoss(nn.Module):
     def forward(self, logits1, logits2):
         raise NotImplementedError
 
-
 class KLDivLossWithLogits(AbstractConsistencyLoss):
     def __init__(self, reduction='mean'):
         super().__init__(reduction)

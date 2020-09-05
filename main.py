@@ -114,11 +114,8 @@ else:
 
 weights_init(F1)
 lr = args.lr
-#G = torch.nn.DataParallel(G).cuda()
-#F1 = torch.nn.DataParallel(F1).cuda()
-G.cuda()
-F1.cuda()
-
+G = torch.nn.DataParallel(G).cuda()
+F1 = torch.nn.DataParallel(F1).cuda()
 if os.path.exists(args.checkpath) == False:
     os.mkdir(args.checkpath)
 
@@ -214,6 +211,7 @@ def train():
         optimizer_f = inv_lr_scheduler(param_lr_f, optimizer_f, step,
                                        init_lr=args.lr)
         lr = optimizer_f.param_groups[0]['lr']
+
         if step % len_train_target == 0:
             data_iter_t = iter(target_loader)
         if step % len_train_target_semi == 0:
@@ -225,6 +223,7 @@ def train():
         data_t = next(data_iter_t)
         data_t_unl = next(data_iter_t_unl)
         data_s = next(data_iter_s)
+
         im_data_s = Variable(data_s[0].cuda())
         gt_labels_s = Variable(data_s[1].cuda())
         im_data_t = Variable(data_t[0].cuda())
@@ -265,7 +264,8 @@ def train():
         group_step([optimizer_g, optimizer_f])
         zero_grad_all()
         if step % 20 == 0:
-            print(loss.cpu().data, loss_cls_F1.cpu().data, loss_msda.cpu().data, end=' | ')
+            print('step %d' % step, 'loss_cls: {:.4f}'.format(loss.cpu().data), ' | ', 'loss_Attract: {:.4f}'.format(loss_msda.cpu().data), ' | ', \
+                  'loss_Explore: {:.4f}'.format(loss_cls_F1.cpu().item()), end=' | ')
 
         # perturbation scheme
         bs = gt_labels_s.size(0)
@@ -283,7 +283,7 @@ def train():
 
 
         if step % 20 == 0:
-            print(target_vat_loss2.cpu().data)
+            print('loss_Perturb: {:.4f}'.format(target_vat_loss2.cpu().data))
         G.zero_grad()
         F1.zero_grad()
         zero_grad_all()
@@ -305,15 +305,15 @@ def train():
                 print('saving model')
                 torch.save(G.state_dict(),
                            os.path.join(args.checkpath,
-                                        "G_iter_model_{}_"
+                                        "G_{}_{}_"
                                         "to_{}_step_{}.pth.tar".
-                                        format(args.source,
+                                        format(args.dataset, args.source,
                                                args.target, step)))
                 torch.save(F1.state_dict(),
                            os.path.join(args.checkpath,
-                                        "F1_iter_model_{}_"
+                                        "F1_{}_{}_"
                                         "to_{}_step_{}.pth.tar".
-                                        format(args.source,
+                                        format(args.dataset, args.source,
                                                args.target, step)))
 
 

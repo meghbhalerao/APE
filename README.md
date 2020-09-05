@@ -1,8 +1,8 @@
-# Attract, Perturb, and Explore: Learning a Feature Alignment Network for Semi-supervised Domain Adaptation
+# [Attract, Perturb, and Explore: Learning a Feature Alignment Network for Semi-supervised Domain Adaptation (ECCV 2020)](https://arxiv.org/pdf/2007.09375.pdf)
 
 ### Acknowledgment
 
-The implementation is built on the pytorch implementation of [SSDA_MME](https://github.com/jwyang/faster-rcnn.pytorch) and we refer a specific module in [DTA](https://github.com/postBG/DTA.pytorch).
+The implementation is built on the pytorch implementation of [SSDA_MME](https://github.com/VisionLearningGroup/SSDA_MME) and we refer a specific module in [DTA](https://github.com/postBG/DTA.pytorch).
 
 ### Prerequisites
 
@@ -19,7 +19,7 @@ pip install -r requirements.txt
 ```
 
 ### Dataset Structure
-You can download the datasets by following the instructions in [SSDA_MME](https://github.com/jwyang/faster-rcnn.pytorch).
+You can download the datasets by following the instructions in [SSDA_MME](https://github.com/VisionLearningGroup/SSDA_MME).
 ```
 data---
      |
@@ -65,7 +65,7 @@ data---
 #### Train
 * DomainNet (clipart, painting, real, sketch)
 ```
-python main.py --dataset multi --source real --target sketch --save_interval 5000 --steps 70000 --net resnet34  --thr 0.5 --num 3 --save_check
+python main.py --dataset multi --source real --target sketch --save_interval 5000 --steps 70000 --net resnet34 --num 3 --save_check
 ```
 * Office-home (Art, Clipart, Product, Real)
 * Office (amazon, dslr, webcam)
