@@ -15,6 +15,14 @@ class ResizeImage():
         th, tw = self.size
         return img.resize((th, tw))
 
+def return_number_of_label_per_class(image_list,number_of_classes):
+    with open(image_list) as f:
+        label_list = [0] * number_of_classes
+        for ind, x in enumerate(f.readlines()):
+            label = int(x.split(' ')[1])
+            label_list[label]+=1
+    return label_list
+
 
 def return_dataset(args):
     base_path = './data/txt/%s' % args.dataset
@@ -72,7 +80,10 @@ def return_dataset(args):
                                           transform=data_transforms['val'])
     target_dataset_test = Imagelists_VISDA(image_set_file_unl, root=root,
                                            transform=data_transforms['test'])
+
     class_list = return_classlist(image_set_file_s)
+    class_num_list = return_number_of_label_per_class(image_set_file_s, len(class_list))
+
     print("%d classes in this dataset" % len(class_list))
     if args.net == 'alexnet':
         bs = 24

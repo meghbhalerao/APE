@@ -43,12 +43,45 @@ parser.add_argument('--dataset', type=str, default='multi',
                     help='the name of dataset')
 parser.add_argument('--num', type=int, default=3,
                     help='number of labeled examples in the target')
-parser.add_argument('--thr', type=float, default=0.5,
-                    help='threshold for exploration scheme')
+#parser.add_argument('--thr', type=float, default=0.5,
+                    #help='threshold for exploration scheme')
+
+######################################## Defining the loss functions here ############################################################################
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=1, gamma=2):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, inputs, targets):
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none') # important to add reduction='none' to keep per-batch-item loss
+        pt = torch.exp(-ce_loss)
+        focal_loss = (self.alpha * (1-pt)**self.gamma * ce_loss).mean() # mean over the batch
+        return focal_loss
+
+# Below given is the focal loss after incorporating the weights for each of the classes
+
+def focal_loss(input_values, gamma):
+    """Computes the focal loss"""
+    p = torch.exp(-input_values)
+    loss = (1 - p) ** gamma * input_values
+    return loss.mean()
+
+class CBFocalLoss(nn.Module):
+    def __init__(self, weight=None, gamma=0.):
+        super(CBFocalLoss, self).__init__()
+        assert gamma >= 0
+        self.gamma = gamma
+        self.weight = weight
+
+    def forward(self, input, target):
+        return focal_loss(F.cross_entropy(input, target, reduction='none', weight=self.weight), self.gamma)
+
+#########################################################################################################
+
 
 args = parser.parse_args()
-source_loader, target_loader, target_loader_unl, target_loader_val, \
-    target_loader_test, class_list = return_dataset(args)
+source_loader, target_loader, target_loader_unl, target_loader_val, target_loader_test, class_num_list, class_list = return_dataset(args) # class num list is returned for CBFL 
 use_gpu = torch.cuda.is_available()
 
 
@@ -72,37 +105,19 @@ for key, value in dict(G.named_parameters()).items():
                         'weight_decay': 0.0005}]
 
 if "resnet" in args.net:
-    F1 = Predictor_deep_latent(num_class=len(class_list), inc=inc)
+    #F1 = Predictor_deep_latent(num_class=len(class_list), inc=inc)
+    F1 = Predictor_deep_attribute()
 else:
-    F1 = Predictor_latent(num_class=len(class_list), inc=inc, temp=args.T)
+    #F1 = Predictor_latent(num_class=len(class_list), inc=inc, temp=args.T)
+
+
+
 weights_init(F1)
 lr = args.lr
-G = torch.nn.DataParallel(G).cuda()
-F1 = torch.nn.DataParallel(F1).cuda()
-
-# im_data_s = torch.FloatTensor(1)
-# im_data_t = torch.FloatTensor(1)
-# im_data_tu = torch.FloatTensor(1)
-# gt_labels_s = torch.LongTensor(1)
-# gt_labels_t = torch.LongTensor(1)
-# sample_labels_t = torch.LongTensor(1)
-# sample_labels_s = torch.LongTensor(1)
-#
-# im_data_s = im_data_s.cuda()
-# im_data_t = im_data_t.cuda()
-# im_data_tu = im_data_tu.cuda()
-# gt_labels_s = gt_labels_s.cuda()
-# gt_labels_t = gt_labels_t.cuda()
-# sample_labels_t = sample_labels_t.cuda()
-# sample_labels_s = sample_labels_s.cuda()
-#
-# im_data_s = Variable(im_data_s)
-# im_data_t = Variable(im_data_t)
-# im_data_tu = Variable(im_data_tu)
-# gt_labels_s = Variable(gt_labels_s)
-# gt_labels_t = Variable(gt_labels_t)
-# sample_labels_t = Variable(sample_labels_t)
-# sample_labels_s = Variable(sample_labels_s)
+#G = torch.nn.DataParallel(G).cuda()
+#F1 = torch.nn.DataParallel(F1).cuda()
+G.cuda()
+F1.cuda()
 
 if os.path.exists(args.checkpath) == False:
     os.mkdir(args.checkpath)
@@ -166,8 +181,16 @@ def train():
 
 
     P = PerturbationGenerator(G, F1, xi=1, eps=25, ip=1)
-    criterion = nn.CrossEntropyLoss().cuda()
-    criterion_reduce = nn.CrossEntropyLoss(reduce=False).cuda()
+
+#    criterion = nn.CrossEntropyLoss().cuda()
+#    criterion_reduce = nn.CrossEntropyLoss(reduce=False).cuda()
+    beta = args.beta
+    effective_num = 1.0 - np.power(beta, class_num_list)
+    per_cls_weights = (1.0 - beta) / np.array(effective_num)
+    per_cls_weights = per_cls_weights / np.sum(per_cls_weights) * len(class_num_list)
+    per_cls_weights = torch.FloatTensor(per_cls_weights).to(device)
+    criterion = CBFocalLoss(weight=per_cls_weights, gamma=args.gamma).to(device)
+    
     target_consistency_criterion = KLDivLossWithLogits(reduction='mean').cuda()
     criterion_entropy = EntropyLoss()
 
@@ -184,7 +207,7 @@ def train():
         thr = 0.5
     else:
         thr = 0.3  
-  
+    best_acc = -1
     for step in range(all_step):
         optimizer_g = inv_lr_scheduler(param_lr_g, optimizer_g, step,
                                        init_lr=args.lr)
@@ -218,14 +241,14 @@ def train():
         ################################################# train model ##################################################
         ################################################################################################################
         data = torch.cat((im_data_s, im_data_t), 0)
-        target = torch.cat((gt_labels_s, gt_labels_t), 0)
+        target = torch.cat((gt_labels_s, gt_labels_t), 0)   
         sigma = [1, 2, 5, 10]
 
         output = G(data)
         output_tu = G(im_data_tu)
         latent_F1, out1 = F1(output)
         latent_F1_tu, out_F1_tu = F1(output_tu)
-
+    
         # supervision loss
         loss = criterion(out1, target)
 
@@ -235,7 +258,7 @@ def train():
         # exploration scheme
         pred = out_F1_tu.data.max(1)[1].detach()
         ent = - torch.sum(F.softmax(out_F1_tu, 1) * (torch.log(F.softmax(out_F1_tu, 1) + 1e-5)), 1)
-        mask_reliable = (ent < args.thr).float().detach()
+        mask_reliable = (ent < thr).float().detach()
         loss_cls_F1 = (mask_reliable * criterion_reduce(out_F1_tu, pred)).sum(0) / (1e-5 + mask_reliable.sum())
 
         (loss + loss_cls_F1 + loss_msda).backward(retain_graph=False)
@@ -271,19 +294,26 @@ def train():
             G.train()
             F1.train()
 
+            if acc_val >= best_acc:
+                best_acc = acc_val
+                best_acc_test = acc_test
+
+            print('best acc test %f best acc val %f' % (best_acc_test,
+                                                        acc_val))
+
             if args.save_check:
                 print('saving model')
                 torch.save(G.state_dict(),
                            os.path.join(args.checkpath,
-                                        "G_iter_model_{}_{}_"
+                                        "G_iter_model_{}_"
                                         "to_{}_step_{}.pth.tar".
-                                        format(args.method, args.source,
+                                        format(args.source,
                                                args.target, step)))
                 torch.save(F1.state_dict(),
                            os.path.join(args.checkpath,
-                                        "F1_iter_model_{}_{}_"
+                                        "F1_iter_model_{}_"
                                         "to_{}_step_{}.pth.tar".
-                                        format(args.method, args.source,
+                                        format(args.source,
                                                args.target, step)))
 
 

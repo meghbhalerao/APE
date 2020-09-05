@@ -4,7 +4,6 @@ import numpy as np
 import torch.nn.functional as F
 import contextlib
 
-
 def set_requires_grad(model, requires_grad):
     for param in model.parameters():
         param.requires_grad = requires_grad
@@ -24,6 +23,14 @@ def l2_normalize(d):
     d /= torch.norm(d_reshaped, dim=1, keepdim=True) + 1e-8
     return d
 
+class AbstractConsistencyLoss(nn.Module):
+    def __init__(self, reduction='mean'):
+        super().__init__()
+        self.reduction = reduction
+
+    def forward(self, logits1, logits2):
+        raise NotImplementedError
+
 
 class KLDivLossWithLogits(AbstractConsistencyLoss):
     def __init__(self, reduction='mean'):
@@ -35,7 +42,6 @@ class KLDivLossWithLogits(AbstractConsistencyLoss):
 
 
 class PerturbationGenerator(nn.Module):
-
     def __init__(self, feature_extractor, classifier, xi=1e-6, eps=3.5, ip=1):
         super().__init__()
         self.feature_extractor = feature_extractor
